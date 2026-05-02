@@ -4,6 +4,7 @@ import './App.css'
 
 /* ── Task Definitions ── */
 const TASKS = [
+  { id: 'test-ai',     label: 'Test AI',              icon: '🧠', color: '#f368e0' },
   { id: 'run-dev',     label: 'Run Dev Server',       icon: '▶',  color: '#00d68f' },
   { id: 'stop-dev',    label: 'Stop Dev Server',      icon: '⏹',  color: '#ff4757' },
   { id: 'kill-port',   label: 'Kill Port',            icon: '🔌', color: '#ffa502' },
