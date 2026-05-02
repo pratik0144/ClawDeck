@@ -1,0 +1,16 @@
+{
+  "name": "clawdeck-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ClawDeck backend - task execution server with WebSocket log streaming",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "socket.io": "^4.7.5"
+  }
+}
