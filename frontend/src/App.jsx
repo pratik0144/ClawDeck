@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { io } from 'socket.io-client'
+import { QRCodeSVG } from 'qrcode.react'
 import './App.css'
 
 /* ── Task Definitions ── */
@@ -15,6 +16,9 @@ const TASKS = [
   { id: 'run-tests',   label: 'Run Tests',            icon: '🧪', color: '#fdcb6e' },
   { id: 'open-logs',   label: 'Open Logs',            icon: '📋', color: '#74b9ff' },
   { id: 'fix-build',   label: 'Fix Build',            icon: '🔧', color: '#a29bfe' },
+  { id: 'open-youtube',label: 'YouTube',              icon: '▶️', color: '#ff0000' },
+  { id: 'open-twitter',label: 'Twitter',              icon: '🐦', color: '#1da1f2' },
+  { id: 'open-chatgpt',label: 'ChatGPT',              icon: '🤖', color: '#10a37f' },
 ]
 
 /* ── Status Badge ── */
@@ -33,6 +37,92 @@ function StatusBadge({ status }) {
       <span className="text-sm font-medium tracking-wide" style={{ color: 'var(--text-secondary)' }}>
         {c.text}
       </span>
+    </div>
+  )
+}
+
+/* ── QR Code Popup ── */
+function QrConnect() {
+  const [lanUrl, setLanUrl] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/ip')
+      .then(r => r.json())
+      .then(d => setLanUrl(`http://${d.ip}:5173`))
+      .catch(() => setError(true))
+  }, [])
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium
+                   transition-all duration-200 cursor-pointer
+                   hover:border-purple-500/50"
+        style={{
+          background: 'var(--bg-card)',
+          borderColor: open ? 'var(--accent)' : 'var(--border-color)',
+          color: 'var(--text-secondary)',
+          boxShadow: open ? '0 0 12px var(--accent-glow)' : 'none',
+        }}
+        title="Scan QR to connect from mobile"
+      >
+        <span className="text-base">📱</span>
+        <span className="hidden sm:inline">Mobile</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-3 z-[100] rounded-2xl border p-5
+                     flex flex-col items-center gap-3 shadow-2xl"
+          style={{
+            background: 'var(--bg-secondary)',
+            borderColor: 'var(--border-color)',
+            minWidth: '220px',
+          }}
+        >
+          <p className="text-xs font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+            Scan to connect from mobile
+          </p>
+
+          {error ? (
+            <p className="text-xs" style={{ color: 'var(--error)' }}>Could not detect LAN IP</p>
+          ) : !lanUrl ? (
+            <div className="w-[160px] h-[160px] rounded-xl flex items-center justify-center"
+                 style={{ background: 'var(--bg-card)' }}>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Loading...</span>
+            </div>
+          ) : (
+            <>
+              <div className="p-3 rounded-xl" style={{ background: '#ffffff' }}>
+                <QRCodeSVG
+                  value={lanUrl}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#1a1a2e"
+                  level="M"
+                />
+              </div>
+              <code
+                className="text-xs px-3 py-1.5 rounded-lg select-all"
+                style={{
+                  background: 'var(--bg-card)',
+                  color: 'var(--terminal-green)',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                {lanUrl}
+              </code>
+            </>
+          )}
+
+          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            Same WiFi network required
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -79,7 +169,7 @@ function TaskCard({ task, onClick, disabled }) {
 }
 
 /* ── Log Panel ── */
-function LogPanel({ logs, onClear }) {
+function LogPanel({ logs, onClear, onStats }) {
   const endRef = useRef(null)
 
   useEffect(() => {
@@ -92,14 +182,24 @@ function LogPanel({ logs, onClear }) {
         <h2 className="text-lg font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
           <span className="mr-2">⌘</span>Live Terminal
         </h2>
-        <button
-          onClick={onClear}
-          className="text-xs px-3 py-1.5 rounded-lg border transition-colors duration-200 cursor-pointer
-                     hover:border-red-500/50 hover:text-red-400"
-          style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
-        >
-          Clear
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onStats}
+            className="text-xs px-3 py-1.5 rounded-lg border transition-colors duration-200 cursor-pointer
+                       hover:border-blue-500/50 hover:text-blue-400"
+            style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+          >
+            System Stats
+          </button>
+          <button
+            onClick={onClear}
+            className="text-xs px-3 py-1.5 rounded-lg border transition-colors duration-200 cursor-pointer
+                       hover:border-red-500/50 hover:text-red-400"
+            style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+          >
+            Clear
+          </button>
+        </div>
       </div>
       <div className="log-container" style={{ minHeight: '200px' }}>
         {logs.length === 0 ? (
@@ -131,7 +231,20 @@ function App() {
   const [status, setStatus] = useState('idle')
   const [logs, setLogs] = useState([])
   const [activeTask, setActiveTask] = useState(null)
+  
+  const [projectPath, setProjectPath] = useState('')
+  const [activeProject, setActiveProject] = useState('')
+  const [smartInput, setSmartInput] = useState('')
+
   const socketRef = useRef(null)
+
+  // Fetch initial project dir
+  useEffect(() => {
+    fetch('/api/health').then(r => r.json()).then(d => {
+      setProjectPath(d.dir)
+      setActiveProject(d.dir)
+    }).catch(console.error)
+  }, [])
 
   // Connect to WebSocket
   useEffect(() => {
@@ -196,6 +309,67 @@ function App() {
     }
   }, [addLog])
 
+  const runSmartTask = useCallback(async () => {
+    if (!smartInput.trim()) return;
+    setStatus('running')
+    setActiveTask('smart-task')
+    addLog('info', `● Smart Task: "${smartInput}"`)
+
+    try {
+      const res = await fetch('/api/smart-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: smartInput }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        addLog('stderr', `Error: ${err.error || 'Unknown error'}`)
+        setStatus('error')
+        setActiveTask(null)
+      } else {
+        setSmartInput('')
+      }
+    } catch (err) {
+      addLog('stderr', `Network error: ${err.message}`)
+      setStatus('error')
+      setActiveTask(null)
+    }
+  }, [smartInput, addLog])
+
+  const handleSetProject = async () => {
+    try {
+      const res = await fetch('/api/set-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: projectPath })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setActiveProject(data.path)
+        addLog('success', `✅ Project changed to: ${data.path}`)
+      } else {
+        addLog('stderr', `❌ Failed to set project: ${data.error}`)
+      }
+    } catch (err) {
+      addLog('stderr', `❌ Network error: ${err.message}`)
+    }
+  }
+
+  const getSystemStats = async () => {
+    try {
+      addLog('info', '● Fetching System Stats...')
+      const res = await fetch('/api/system-stats')
+      const data = await res.json()
+      if (res.ok) {
+        addLog('stdout', `🖥️ CPU Load (1m): ${data.cpu_load_1m}`)
+        addLog('stdout', `🧠 RAM Used: ${data.ram_used_gb} GB / ${data.ram_total_gb} GB`)
+      }
+    } catch (err) {
+      addLog('stderr', `❌ Network error: ${err.message}`)
+    }
+  }
+
   const clearLogs = useCallback(() => {
     setLogs([])
   }, [])
@@ -221,7 +395,30 @@ function App() {
               </p>
             </div>
           </div>
-          <StatusBadge status={status} />
+          
+          <div className="flex items-center gap-3 bg-opacity-20 bg-black p-2 rounded-xl">
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Project:</span>
+            <input
+              type="text"
+              value={projectPath}
+              onChange={(e) => setProjectPath(e.target.value)}
+              className="text-xs bg-transparent outline-none w-64 border-b pb-1 transition-colors focus:border-purple-500"
+              style={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)' }}
+              placeholder="/Users/..."
+            />
+            <button
+              onClick={handleSetProject}
+              className="text-xs px-3 py-1 rounded-lg border transition-colors hover:border-purple-500 hover:text-purple-400"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+            >
+              Set
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <QrConnect />
+            <StatusBadge status={status} />
+          </div>
         </div>
       </header>
 
@@ -245,6 +442,28 @@ function App() {
           </div>
         )}
 
+        {/* Smart Task Input */}
+        <section className="glass rounded-2xl p-4 flex gap-3 shadow-lg" style={{ borderColor: 'var(--border-color)' }}>
+          <input
+            type="text"
+            value={smartInput}
+            onChange={(e) => setSmartInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && runSmartTask()}
+            placeholder="Ask anything... (e.g., run dev server, fix build, install deps)"
+            className="flex-1 bg-transparent text-sm outline-none px-2"
+            style={{ color: 'var(--text-primary)' }}
+            disabled={status === 'running'}
+          />
+          <button
+            onClick={runSmartTask}
+            disabled={status === 'running' || !smartInput.trim()}
+            className="px-6 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >
+            Run Smart Task 🧠
+          </button>
+        </section>
+
         {/* Task Grid */}
         <section>
           <h2 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
@@ -264,7 +483,7 @@ function App() {
 
         {/* Log Panel */}
         <section className="flex-1">
-          <LogPanel logs={logs} onClear={clearLogs} />
+          <LogPanel logs={logs} onClear={clearLogs} onStats={getSystemStats} />
         </section>
       </main>
 
