@@ -6,6 +6,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.0] — 2026-05-03
+
+### 📱 Mobile Dashboard & GitHub Bridge
+
+#### Added
+- **Mobile Pairing System** — QR code-based secure session pairing between laptop and mobile (`PairingScreen.jsx`, `MobileLayout.jsx`).
+- **GitHub Integration Bridge** — Download and extract GitHub repos via URL (`/api/download-repo`) and fetch user repos (`/api/download-user-repos`).
+- **Smart Task Routing** — New `/api/smart-task` dynamically routes free-text input to fast shell execution or the AI agent.
+- **System Stats API** — Monitor CPU load and RAM usage (`/api/system-stats`).
+- **New UI Components** — Added `GitHubSection`, `SmartTaskInput`, and a clean tab-based mobile navigation layout.
+
+#### Changed
+- **Dev Server Execution** — `npm run dev` now correctly runs as an unawaited background process, preventing UI blocking.
+- **Port Cleanup Mechanism** — Expanded `kill-port` to comprehensively clear 3000, 5174-5178, and 8080.
+- **Dependencies** — Added `lucide-react`, `qrcode.react`, and `uuid`.
+
+#### Fixed
+- Process termination bugs during active tasks by refining the kill mechanism.
+
+---
+
 ## [0.3.0] — 2026-05-02
 
 ### 🧠 Hybrid AI-First Architecture

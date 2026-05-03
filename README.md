@@ -1,8 +1,8 @@
 # 🦀 ClawDeck
 
-**AI-Powered Developer Dashboard — Local Chrome MVP**
+**AI-Powered Developer Dashboard — Local Chrome MVP & Mobile Companion**
 
-ClawDeck is a mobile-optimized developer dashboard that runs in Chrome and lets you trigger common developer tasks with one click. It uses a **Hybrid AI-First architecture** — simple tasks run instantly via direct shell, while complex tasks are handled by a MiniMax AI agent through [OpenCode](https://opencode.ai).
+ClawDeck is a responsive developer dashboard that lets you trigger common developer tasks with one click. It uses a **Hybrid AI-First architecture** — simple tasks run instantly via direct shell, while complex tasks are handled by a MiniMax AI agent through [OpenCode](https://opencode.ai). The dashboard features **QR-based Mobile Pairing** for native-like control from your phone, and a **GitHub Extension Bridge** to instantly download and run external repositories.
 
 ---
 
@@ -21,17 +21,17 @@ ClawDeck is a mobile-optimized developer dashboard that runs in Chrome and lets 
 
 ```
 ┌──────────────────────────────────────────────┐
-│               ClawDeck Frontend              │
-│          React + Vite + Tailwind CSS         │
+│        ClawDeck Frontend (Laptop & Mobile)   │
+│   React + Vite + Tailwind CSS + QR Pairing   │
 │              http://localhost:5173           │
 │                                              │
-│   ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐      │
-│   │Test  │ │ Run  │ │ Kill │ │ Git  │ ...   │
-│   │ AI 🧠│ │ Dev ▶│ │ Port │ │ Pull │       │
-│   └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘      │
-│      │        │        │        │            │
-│      └────────┴────────┴────────┘            │
-│                    │                          │
+│   ┌──────┐ ┌──────┐ ┌──────┐ ┌─────────┐   │
+│   │Smart │ │ Run  │ │ Kill │ │ GitHub  │   │
+│   │Task 🧠│ │ Dev ▶│ │ Port │ │ Bridge  │   │
+│   └──┬───┘ └──┬───┘ └──┬───┘ └───┬─────┘   │
+│      │        │        │         │           │
+│      └────────┴────────┴─────────┘           │
+│                    │                         │
 │              Socket.IO + REST                │
 └──────────────────┬───────────────────────────┘
                    │
@@ -44,10 +44,10 @@ ClawDeck is a mobile-optimized developer dashboard that runs in Chrome and lets 
 │   │  Direct Shell    │  │  OpenCode Agent  │ │
 │   │  (spawn)         │  │  (execSync)      │ │
 │   │                  │  │                  │ │
-│   │  • run-dev       │  │  • test-ai       │ │
+│   │  • run-dev       │  │  • smart-task    │ │
 │   │  • stop-dev      │  │  • git-commit    │ │
 │   │  • kill-port     │  │  • fix-build     │ │
-│   │  • git-pull      │  │                  │ │
+│   │  • download-repo │  │                  │ │
 │   │  • git-push      │  │  Model:          │ │
 │   │  • install-deps  │  │  minimax-m2.5    │ │
 │   │  • run-tests     │  │  -free           │ │
@@ -76,6 +76,7 @@ ClawDeck is a mobile-optimized developer dashboard that runs in Chrome and lets 
 | **Styling** | Tailwind CSS | 4.x |
 | **Backend** | Express | 4.x |
 | **Real-Time** | Socket.IO | 4.x |
+| **Utilities** | Lucide React, qrcode.react, uuid | — |
 | **AI Agent** | OpenCode CLI | Latest |
 | **AI Model** | opencode/minimax-m2.5-free | — |
 
@@ -174,6 +175,13 @@ cd ~/Developer/samsung && \
 
 ## 🎮 Task Reference
 
+### 🧠 Smart Task Routing
+You can type natural language into the **Smart Task** input. The backend dynamically heuristics text to decide:
+- **Direct Shell**: "run dev", "kill port", "git pull", "install dep"
+- **AI Agent**: Any other complex query is sent to OpenCode for reasoning.
+
+
+
 ### NON-AI Tasks (Direct Shell — Instant)
 
 | Button | Action | Command |
@@ -204,6 +212,12 @@ cd ~/Developer/samsung && \
 | Method | Endpoint | Body | Description |
 |--------|----------|------|-------------|
 | `POST` | `/api/run-task` | `{ "task": "test-ai" }` | Trigger a task |
+| `POST` | `/api/smart-task` | `{ "input": "..." }` | Smart heuristic task routing |
+| `POST` | `/api/download-repo`| `{ "repoUrl": "..." }` | Download & extract GitHub repo |
+| `POST` | `/api/download-user-repos`| `{ "username": "..." }`| Download top 5 repos for a user |
+| `GET` | `/api/system-stats`| — | Get CPU load and RAM usage |
+| `GET` | `/api/session/create`| — | Create a new Mobile-Laptop session |
+| `POST` | `/api/session/pair`| `{ "token": "..." }` | Pair a mobile device to laptop |
 | `GET` | `/api/health` | — | Server health + model info |
 
 ### WebSocket Events
@@ -212,6 +226,8 @@ cd ~/Developer/samsung && \
 |-------|-----------|---------|-------------|
 | `task:log` | Server → Client | `{ type: "stdout"\|"stderr"\|"info", text: "..." }` | Live log line |
 | `task:status` | Server → Client | `{ status: "idle"\|"running"\|"success"\|"error", message: "..." }` | Task state |
+| `session:paired`| Server → Client | `{ token: "..." }` | Mobile has paired |
+| `project:changed`| Server → Client | `{ path: "..." }` | Project directory changed |
 
 ### Log Types
 
