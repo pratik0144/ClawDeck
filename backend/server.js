@@ -6,11 +6,13 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const https = require('https');
 
 // ═══════════════════════════════════════════════════
 // Config
 // ═══════════════════════════════════════════════════
 const PORT = 3001;
+const PROJECTS_BASE_DIR = '/Users/pratikpotadar/Developer/projects';
 let currentProjectDir = process.env.PROJECT_DIR || path.resolve(__dirname, '..');
 const MODEL = 'opencode/minimax-m2.5-free';
 const AGENT_TIMEOUT = 45000;
@@ -436,6 +438,178 @@ app.get('/api/system-stats', (req, res) => {
     ram_used_gb: (usedMem / 1024 ** 3).toFixed(2),
     ram_total_gb: (totalMem / 1024 ** 3).toFixed(2)
   });
+});
+
+// ═══════════════════════════════════════════════════
+// GitHub Repo Download
+// ═══════════════════════════════════════════════════
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (res) => {
+      // Handle GitHub redirects (302)
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        file.close();
+        fs.unlinkSync(dest);
+        return downloadFile(res.headers.location, dest).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        file.close();
+        fs.unlinkSync(dest);
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+    }).on('error', (err) => {
+      fs.unlinkSync(dest);
+      reject(err);
+    });
+  });
+}
+
+async function downloadAndExtractRepo(repoUrl, targetBaseDir) {
+  // Parse GitHub URL
+  const match = repoUrl.replace(/\.git$/, '').replace(/\/$/, '').match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!match) throw new Error('Invalid GitHub URL');
+
+  const [, username, repoName] = match;
+  const baseDir = targetBaseDir || PROJECTS_BASE_DIR;
+
+  // Ensure base dir exists
+  fs.mkdirSync(baseDir, { recursive: true });
+
+  const zipPath = path.join(baseDir, `${repoName}.zip`);
+  const finalDir = path.join(baseDir, repoName);
+
+  // Skip if already exists
+  if (fs.existsSync(finalDir)) {
+    log('info', `📁 ${repoName} already exists, skipping download`);
+    return finalDir;
+  }
+
+  // Try main branch first, fallback to master
+  let downloaded = false;
+  for (const branch of ['main', 'master']) {
+    const zipUrl = `https://github.com/${username}/${repoName}/archive/refs/heads/${branch}.zip`;
+    log('info', `⬇️ Trying ${branch} branch...`);
+    try {
+      await downloadFile(zipUrl, zipPath);
+      downloaded = true;
+      log('info', `✅ Downloaded ${repoName} (${branch})`);
+      break;
+    } catch (e) {
+      log('info', `⚠️ ${branch} branch not found, trying next...`);
+    }
+  }
+
+  if (!downloaded) throw new Error(`Could not download ${repoName} from any branch`);
+
+  // Extract ZIP
+  log('info', `📦 Extracting ${repoName}...`);
+  await new Promise((resolve, reject) => {
+    const child = spawn('unzip', ['-o', zipPath, '-d', baseDir], { cwd: baseDir });
+    child.stderr.on('data', d => log('stderr', d.toString().trim()));
+    child.on('close', code => code === 0 ? resolve() : reject(new Error(`unzip exit ${code}`)));
+    child.on('error', reject);
+  });
+
+  // Rename extracted folder (GitHub creates repo-branch/)
+  for (const branch of ['main', 'master']) {
+    const extracted = path.join(baseDir, `${repoName}-${branch}`);
+    if (fs.existsSync(extracted)) {
+      fs.renameSync(extracted, finalDir);
+      log('info', `📁 Renamed to ${repoName}/`);
+      break;
+    }
+  }
+
+  // Cleanup ZIP
+  try { fs.unlinkSync(zipPath); } catch {}
+
+  return finalDir;
+}
+
+app.post('/api/download-repo', async (req, res) => {
+  const { repoUrl } = req.body;
+  if (!repoUrl) return res.status(400).json({ error: 'Missing repoUrl' });
+
+  res.json({ ok: true, message: 'Download started' });
+
+  try {
+    status('running', 'Downloading repo...');
+    log('info', '─'.repeat(50));
+    log('info', `🔗 Repo: ${repoUrl}`);
+
+    const finalDir = await downloadAndExtractRepo(repoUrl);
+
+    // Auto-set as current project
+    currentProjectDir = finalDir;
+    log('info', `📁 Project set to: ${currentProjectDir}`);
+    log('info', '─'.repeat(50));
+    status('success', `Repo ready: ${path.basename(finalDir)}`);
+
+    // Notify frontend to update project path
+    io.emit('project:changed', { path: currentProjectDir });
+
+  } catch (err) {
+    log('stderr', `❌ Download failed: ${err.message}`);
+    status('error', err.message);
+  }
+});
+
+app.post('/api/download-user-repos', async (req, res) => {
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: 'Missing username' });
+
+  res.json({ ok: true, message: `Fetching repos for ${username}` });
+
+  try {
+    status('running', `Fetching repos for ${username}...`);
+    log('info', '─'.repeat(50));
+    log('info', `👤 GitHub user: ${username}`);
+
+    // Fetch repo list from GitHub API
+    const repos = await new Promise((resolve, reject) => {
+      https.get(`https://api.github.com/users/${username}/repos?per_page=100&sort=updated`, {
+        headers: { 'User-Agent': 'ClawDeck' }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode !== 200) return reject(new Error(`GitHub API: ${res.statusCode}`));
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      }).on('error', reject);
+    });
+
+    const topRepos = repos.slice(0, 5);
+    log('info', `📋 Found ${repos.length} repos, downloading top ${topRepos.length}`);
+
+    const userDir = path.join(PROJECTS_BASE_DIR, username);
+    fs.mkdirSync(userDir, { recursive: true });
+
+    for (let i = 0; i < topRepos.length; i++) {
+      const repo = topRepos[i];
+      log('info', `⬇️ Downloading repo ${i + 1}/${topRepos.length}: ${repo.name}`);
+      try {
+        await downloadAndExtractRepo(repo.html_url, userDir);
+      } catch (e) {
+        log('stderr', `⚠️ Failed ${repo.name}: ${e.message}`);
+      }
+    }
+
+    // Set project to user directory
+    currentProjectDir = userDir;
+    log('info', `📁 Project set to: ${currentProjectDir}`);
+    log('info', '─'.repeat(50));
+    status('success', `${topRepos.length} repos downloaded for ${username}`);
+    io.emit('project:changed', { path: currentProjectDir });
+
+  } catch (err) {
+    log('stderr', `❌ Failed: ${err.message}`);
+    status('error', err.message);
+  }
 });
 
 // ── LAN IP for QR mobile connection ──

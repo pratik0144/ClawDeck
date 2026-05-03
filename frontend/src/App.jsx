@@ -235,6 +235,8 @@ function App() {
   const [projectPath, setProjectPath] = useState('')
   const [activeProject, setActiveProject] = useState('')
   const [smartInput, setSmartInput] = useState('')
+  const [repoUrl, setRepoUrl] = useState('')
+  const [githubUser, setGithubUser] = useState('')
 
   const socketRef = useRef(null)
 
@@ -273,6 +275,14 @@ function App() {
 
     socket.on('disconnect', () => {
       addLog('info', '● Disconnected from server')
+    })
+
+    // Listen for project changes (from Chrome extension downloads)
+    socket.on('project:changed', (data) => {
+      if (data.path) {
+        setProjectPath(data.path)
+        setActiveProject(data.path)
+      }
     })
 
     return () => {
@@ -373,6 +383,58 @@ function App() {
   const clearLogs = useCallback(() => {
     setLogs([])
   }, [])
+
+  const downloadRepo = async () => {
+    if (!repoUrl.trim()) return
+    setStatus('running')
+    setActiveTask('download-repo')
+    addLog('info', `● Downloading repo: ${repoUrl}`)
+    try {
+      const res = await fetch('/api/download-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        addLog('stderr', `Error: ${err.error}`)
+        setStatus('error')
+        setActiveTask(null)
+      } else {
+        setRepoUrl('')
+      }
+    } catch (err) {
+      addLog('stderr', `Network error: ${err.message}`)
+      setStatus('error')
+      setActiveTask(null)
+    }
+  }
+
+  const downloadUserRepos = async () => {
+    if (!githubUser.trim()) return
+    setStatus('running')
+    setActiveTask('download-user-repos')
+    addLog('info', `● Downloading repos for: ${githubUser}`)
+    try {
+      const res = await fetch('/api/download-user-repos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: githubUser }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        addLog('stderr', `Error: ${err.error}`)
+        setStatus('error')
+        setActiveTask(null)
+      } else {
+        setGithubUser('')
+      }
+    } catch (err) {
+      addLog('stderr', `Network error: ${err.message}`)
+      setStatus('error')
+      setActiveTask(null)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)' }}>
@@ -478,6 +540,61 @@ function App() {
                 disabled={status === 'running'}
               />
             ))}
+          </div>
+        </section>
+
+        {/* GitHub Download Section */}
+        <section>
+          <h2 className="text-sm font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
+            GitHub
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Single Repo */}
+            <div className="glass rounded-2xl p-4 flex gap-3 shadow-lg" style={{ borderColor: 'var(--border-color)' }}>
+              <input
+                type="text"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && downloadRepo()}
+                placeholder="https://github.com/user/repo"
+                className="flex-1 bg-transparent text-sm outline-none px-2"
+                style={{ color: 'var(--text-primary)' }}
+                disabled={status === 'running'}
+              />
+              <button
+                onClick={downloadRepo}
+                disabled={status === 'running' || !repoUrl.trim()}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           hover:scale-105 active:scale-95"
+                style={{ background: '#00b894', color: '#fff' }}
+              >
+                Download Repo ⬇️
+              </button>
+            </div>
+            {/* User Repos */}
+            <div className="glass rounded-2xl p-4 flex gap-3 shadow-lg" style={{ borderColor: 'var(--border-color)' }}>
+              <input
+                type="text"
+                value={githubUser}
+                onChange={(e) => setGithubUser(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && downloadUserRepos()}
+                placeholder="GitHub username"
+                className="flex-1 bg-transparent text-sm outline-none px-2"
+                style={{ color: 'var(--text-primary)' }}
+                disabled={status === 'running'}
+              />
+              <button
+                onClick={downloadUserRepos}
+                disabled={status === 'running' || !githubUser.trim()}
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           hover:scale-105 active:scale-95"
+                style={{ background: '#6c5ce7', color: '#fff' }}
+              >
+                Download All Repos 👤
+              </button>
+            </div>
           </div>
         </section>
 
