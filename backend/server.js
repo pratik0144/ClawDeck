@@ -7,6 +7,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const https = require('https');
+const { v4: uuidv4 } = require('uuid');
 
 // ═══════════════════════════════════════════════════
 // Config
@@ -22,10 +23,40 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve frontend build for mobile LAN access
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.use(express.static(FRONTEND_DIST));
+}
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
 let activeProcess = null;
+
+// ═══════════════════════════════════════════════════
+// Session Management (QR Pairing)
+// ═══════════════════════════════════════════════════
+const sessions = new Map();
+
+function createSession() {
+  const token = uuidv4();
+  const session = {
+    token,
+    createdAt: Date.now(),
+    paired: false,
+    laptopSocketId: null,
+    mobileSocketId: null
+  };
+  sessions.set(token, session);
+  return session;
+}
+
+function getSession(token) {
+  const session = sessions.get(token);
+  if (!session) return null;
+  return session;
+}
 
 // Detect OpenCode at startup
 let opencodePath = null;
@@ -628,23 +659,114 @@ app.get('/api/ip', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════
+// Session API (QR Pairing)
+// ═══════════════════════════════════════════════════
+
+app.get('/api/session/create', (req, res) => {
+  const session = createSession();
+  const ip = getLocalIP();
+  const qrUrl = `http://${ip}:${PORT}/?session=${session.token}`;
+  console.log(`[Session] Created new session: ${session.token.substring(0, 8)}...`);
+  res.json({
+    token: session.token,
+    qrUrl,
+  });
+});
+
+app.get('/api/session/status/:token', (req, res) => {
+  const token = req.params.token;
+  const session = getSession(token);
+  if (!session) {
+    console.log(`[Session] Status check failed - invalid token: ${token ? token.substring(0, 8) + '...' : 'none'}`);
+    return res.json({ valid: false, paired: false });
+  }
+  res.json({
+    valid: true,
+    paired: session.paired,
+  });
+});
+
+app.post('/api/session/pair', (req, res) => {
+  const { token } = req.body;
+  const session = getSession(token);
+  if (!session) {
+    console.log(`[Session] Pair attempt failed - invalid token: ${token ? token.substring(0, 8) + '...' : 'none'}`);
+    return res.status(404).json({ error: 'Session not found or expired' });
+  }
+
+  console.log(`[Session] Pair successful: ${token.substring(0, 8)}...`);
+  session.paired = true;
+
+  // Notify laptop socket that mobile has paired
+  if (session.laptopSocketId) {
+    io.to(session.laptopSocketId).emit('session:paired', { token });
+  }
+
+  res.json({ ok: true, paired: true });
+});
+
+// ═══════════════════════════════════════════════════
 // WebSocket
 // ═══════════════════════════════════════════════════
 
 io.on('connection', (socket) => {
-  console.log(`+ ${socket.id}`);
+  const role = socket.handshake.query.role; // 'laptop' or 'mobile'
+  const sessionToken = socket.handshake.query.session;
+
+  console.log(`+ ${socket.id} (role: ${role || 'unknown'}, session: ${sessionToken ? sessionToken.substring(0, 8) + '...' : 'none'})`);
+
+  // Register socket with session
+  if (sessionToken) {
+    const session = getSession(sessionToken);
+    if (session) {
+      if (role === 'laptop') {
+        session.laptopSocketId = socket.id;
+      } else if (role === 'mobile') {
+        session.mobileSocketId = socket.id;
+        // Auto-pair on mobile connect
+        if (!session.paired) {
+          session.paired = true;
+          if (session.laptopSocketId) {
+            io.to(session.laptopSocketId).emit('session:paired', { token: sessionToken });
+          }
+        }
+      }
+    }
+  }
+
   socket.emit('task:log', { type: 'info', text: '● Welcome to ClawDeck' });
   socket.emit('task:log', { type: 'info', text: `🤖 OpenCode: ${opencodePath ? 'ready' : 'not found'}` });
   socket.emit('task:log', { type: 'info', text: `📦 AI Model: ${MODEL}` });
   socket.emit('task:status', { status: 'idle', message: 'Ready' });
-  socket.on('disconnect', () => console.log(`- ${socket.id}`));
+
+  socket.on('disconnect', () => {
+    console.log(`- ${socket.id}`);
+    // If a mobile disconnects, notify laptop
+    if (sessionToken) {
+      const session = sessions.get(sessionToken);
+      if (session && role === 'mobile' && session.laptopSocketId) {
+        session.paired = false;
+        session.mobileSocketId = null;
+        io.to(session.laptopSocketId).emit('session:disconnected', { token: sessionToken });
+      }
+    }
+  });
 });
+
+// ═══════════════════════════════════════════════════
+// SPA Fallback (must be AFTER all API routes)
+// ═══════════════════════════════════════════════════
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+  });
+}
 
 // ═══════════════════════════════════════════════════
 // Start
 // ═══════════════════════════════════════════════════
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIP();
   console.log(`\n  ⚡ ClawDeck Backend — http://localhost:${PORT}`);
   console.log(`  📱 LAN: http://${ip}:${PORT}`);
