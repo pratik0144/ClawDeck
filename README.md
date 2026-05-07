@@ -6,6 +6,28 @@ ClawDeck is a responsive developer dashboard that lets you trigger common develo
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+  <img src="assets/laptop-pairing.png" alt="Laptop Pairing View" width="800"/>
+  <br/>
+  <i>Laptop View: Secure QR Pairing</i>
+  <br/><br/>
+  <img src="assets/mobile-dashboard.png" alt="Mobile Dashboard View" width="350"/>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/mobile-terminal.png" alt="Mobile Terminal View" width="350"/>
+  <br/>
+  <i>Mobile View: Control Dashboard & Real-time Terminal Sync</i>
+  <br/><br/>
+  <a href="https://youtu.be/g6QFjMWBRlI" target="_blank">
+    <img src="https://img.youtube.com/vi/g6QFjMWBRlI/maxresdefault.jpg" alt="ClawDeck Demo Video" width="800"/>
+  </a>
+  <br/>
+  <i>Watch the 4-minute Full Demo Video</i>
+</div>
+
+---
+
 ## 🎬 Demo
 
 | Kill Port (Direct Shell — instant) | Test AI (OpenCode Agent — ~6s) |
@@ -93,7 +115,7 @@ samsung/
 ├── backend/
 │   ├── package.json
 │   ├── package-lock.json
-│   └── server.js            ← Hybrid task engine (350 lines)
+│   └── server.js            ← Hybrid task engine 
 │
 └── frontend/
     ├── package.json
